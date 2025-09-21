@@ -1,0 +1,26 @@
+plugins {
+    id 'java'
+}
+
+group = 'me.gb2022'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+apply from: '../gbuild.gradle'
+apply from: "../github-packages.gradle"
+
+publish_gbuild()
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compileOnly "org.apache.logging.log4j:log4j-core:2.8.1"
+    compileOnly 'me.gb2022.commons:commons-math:1.0'
+    compileOnly 'me.gb2022.commons:commons-container:1.0'
+    compileOnly 'me.gb2022.commons:commons-general:1.0'
+}

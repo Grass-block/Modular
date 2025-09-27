@@ -102,6 +102,9 @@ public abstract class ModuleHandle<M extends IModule, H extends ModuleHandle, P 
         }
         this.preEnable(this.handle);
         this.handle.enable();
+        for (var c : this.components.values()) {
+            c.enable();
+        }
         this.postEnable(this.handle);
         this.status = FunctionalComponentStatus.ENABLED;
     }
@@ -111,6 +114,9 @@ public abstract class ModuleHandle<M extends IModule, H extends ModuleHandle, P 
             throw new IllegalStateException("already enabled");
         }
         this.preDisable(this.handle);
+        for (var c : this.components.values()) {
+            c.disable();
+        }
         this.handle.disable();
         this.postDisable(this.handle);
         this.status = FunctionalComponentStatus.DISABLED;

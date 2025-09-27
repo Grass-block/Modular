@@ -45,7 +45,7 @@ public abstract class AbstractPackageManager<P extends IPackage<?, ?, ?>> implem
             if (isReservedPackage(pkg)) {
                 this.statusMap.put(pkg.getId(), "enabled");
             }
-            if (getStatus(pkg.getId()) == TriState.FALSE) {
+            if (getStatus(pkg.getId()) == TriState.TRUE) {
                 try {
                     pkg.onEnable();
                 } catch (Exception ex) {

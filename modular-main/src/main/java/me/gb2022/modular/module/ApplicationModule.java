@@ -10,12 +10,12 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface ApplicationModule {
+    String id();
+
     /**
      * recommended to fill but acceptable if empty
      */
     String version() default "1.0";
-
-    String id() default "null";
 
     boolean beta() default false;
 

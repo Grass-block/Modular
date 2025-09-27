@@ -1,43 +1,26 @@
 package me.gb2022.modular.module;
 
 import me.gb2022.modular.pack.IPackage;
-import me.gb2022.modular.subcomponent.SubComponent;
-import org.apache.logging.log4j.Logger;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
 
-public abstract class AbstractModule implements IModule {
-    private final Map<Class<? extends SubComponent<?>>, SubComponent<?>> components = new HashMap<>();
-    protected Logger logger;
+@SuppressWarnings("rawtypes")
+public abstract class AbstractModule<H extends ModuleHandle,P extends IPackage<?,H,?>> implements IModule<P,H> {
+    private H handle;
 
     @Override
-    public final Map<Class<? extends SubComponent<?>>, SubComponent<?>> getComponents() {
-        return components;
+    public P parent() {
+        return (P) this.handle.getParent();
     }
 
     @Override
-    public final <I extends SubComponent<?>> void getComponent(Class<I> clazz, Consumer<I> consumer) {
-        consumer.accept((I) this.components.get(clazz));
+    public H handle() {
+        return this.handle;
     }
 
     @Override
-    public final <I extends SubComponent<?>> I getComponent(Class<I> clazz) {
-        return (I) this.components.get(clazz);
-    }
-
-    @Override
-    public final Logger logger() {
-        return this.logger;
-    }
-
-    public abstract Logger createLogger();
-
-    @Override
-    public void init(String id, IPackage parent) {
-        this.logger = createLogger();
+    public void init(String id, P parent, H handle) {
+        this.handle = handle;
     }
 
     @Override

@@ -1,11 +1,9 @@
 package me.gb2022.modular.module;
 
 import me.gb2022.modular.FunctionalComponent;
-import me.gb2022.modular.subcomponent.SubComponentHolder;
-import org.apache.logging.log4j.Logger;
 import me.gb2022.modular.pack.IPackage;
 
-public interface IModule extends FunctionalComponent, SubComponentHolder {
+public interface IModule<P extends IPackage, H extends ModuleHandle> extends FunctionalComponent {
     default ApplicationModule descriptor() {
         return this.getClass().getAnnotation(ApplicationModule.class);
     }
@@ -15,34 +13,17 @@ public interface IModule extends FunctionalComponent, SubComponentHolder {
     }
 
     default String getFullId() {
-        return id();
+        return handle().getMetadata().key().fullId();
     }
 
     default String id() {
-        return descriptor().id();
+        return handle().getMetadata().key().id();
     }
 
-    Logger logger();
+    P parent();
 
-    IPackage parent();
+    H handle();
 
-    default void enableModule() throws Exception {
-        this.enable();
-
-        for (var component : this.getComponents().values()) {
-            component.enable();
-        }
-    }
-
-    default void disableModule() throws Exception {
-        for (var component : this.getComponents().values()) {
-            component.disable();
-        }
-
-        this.disable();
-    }
-
-
-    default void init(String id, IPackage parent){
+    default void init(String id, P parent, H handle) {
     }
 }

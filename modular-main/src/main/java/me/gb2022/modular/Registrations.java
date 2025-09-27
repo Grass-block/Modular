@@ -5,5 +5,5 @@ public interface Registrations {
     String PLUGIN_VPN_EVENT = "modular:plugin-vpn-event";
     String PLUGIN_VPN_LISTENER = "modular:plugin-vpn-listener";
     String PLUGIN_MESSAGE = "modular:plugin-message";
-    String CLIENT_MESSAGE = "qb:cm";
+    String CLIENT_MESSAGE = "modular:client-message";
 }

@@ -59,7 +59,7 @@ public abstract class AbstractPackageManager<P extends IPackage<?, ?, ?>> implem
 
     @Override
     public void removePackage(String id) {
-        if (this.getStatus(id) == TriState.TRUE) {
+        if (this.getStatus(id) == TriState.UNKNOWN) {
             return;
         }
         if (!this.packages.containsKey(id)) {
@@ -77,7 +77,7 @@ public abstract class AbstractPackageManager<P extends IPackage<?, ?, ?>> implem
         if (getStatus(id) == TriState.UNKNOWN) {
             return ObjectOperationResult.NOT_FOUND;
         }
-        if (getStatus(id) == TriState.FALSE) {
+        if (getStatus(id) == TriState.TRUE) {
             return ObjectOperationResult.ALREADY_OPERATED;
         }
         try {
@@ -94,7 +94,7 @@ public abstract class AbstractPackageManager<P extends IPackage<?, ?, ?>> implem
         if (getStatus(id) == TriState.UNKNOWN) {
             return ObjectOperationResult.NOT_FOUND;
         }
-        if (getStatus(id) == TriState.TRUE) {
+        if (getStatus(id) == TriState.FALSE) {
             return ObjectOperationResult.ALREADY_OPERATED;
         }
         try {
@@ -138,10 +138,10 @@ public abstract class AbstractPackageManager<P extends IPackage<?, ?, ?>> implem
         if (!this.statusMap.containsKey(id)) {
             return TriState.UNKNOWN;
         }
-        return Objects.equals(this.statusMap.get(id), "enabled") ? TriState.FALSE : TriState.TRUE;
+        return Objects.equals(this.statusMap.get(id), "enabled") ? TriState.TRUE : TriState.FALSE;
     }
 
-    public void onDisable() {
+    public void disable() {
         this.saveStatus();
         for (String id : new ArrayList<>(this.getPackages().keySet())) {
             this.removePackage(id);

@@ -1,23 +1,190 @@
 package me.gb2022.modular.service;
 
+import me.gb2022.modular.APIIncompatibleException;
+import me.gb2022.modular.service.injection.Export;
+import me.gb2022.modular.service.injection.ServiceInject;
+import me.gb2022.modular.service.injection.ServiceProvider;
 import org.apache.logging.log4j.Logger;
 
-public interface ServiceManager<I extends Service> {
-    Logger getLogger();
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.HashSet;
 
-    <E extends I> E createImplementation(Class<E> service, String id);
+public abstract class ServiceManager<I extends Service> {
+    private final Logger logger = getLogger();
+    private final HashMap<String, Class<? extends I>> services = new HashMap<>(24);
 
-    <E extends I> void exportService(E object, Class<E> type);
+    static boolean hasImplementation(Class<? extends Service> clazz) {
+        for (var m : clazz.getDeclaredMethods()) {
+            if (m.getAnnotation(ServiceProvider.class) != null) {
+                return true;
+            }
+        }
 
-    <E extends I> void registerService(Class<E> service);
+        var implClass = clazz.getAnnotation(ApplicationService.class).impl();
 
-    void handleException(Throwable e);
+        return implClass != Service.class;
+    }
 
-    void unregisterService(Class<? extends I> service);
+    static boolean isLazy(Class<? extends Service> clazz) {
+        return clazz.getAnnotation(ApplicationService.class).requiredBy().length != 0;
+    }
 
-    void unregisterExportedService(Class<? extends I> type);
 
-    <E extends I> Class<E> getService(String id, Class<Class<E>> type);
+    private Field getInjection(Class<? extends Service> service) {
+        if (!hasImplementation(service)) {
+            return null;
+        }
 
-    void unregisterAllServices(ServiceLayer layer);
+        Field injection = null;
+
+        for (var f : service.getDeclaredFields()) {
+            if (f.getAnnotation(ServiceInject.class) == null) {
+                continue;
+            }
+
+            if (injection == null) {
+                injection = f;
+            } else {
+                throw new IllegalArgumentException("find multiple injection point in %s, this will cause BUGS!".formatted(service));
+            }
+        }
+
+        if (injection != null) {
+            injection.setAccessible(true);
+        }
+
+        return injection;
+    }
+
+    private <E extends I> void inject(Class<E> service, String id, Field inject) {
+        try {
+            var holder = ((ServiceHolder<E>) inject.get(null));
+            var instance = createImplementation(service, id);
+
+            if (instance == null) {
+                logger.warn("service {} has null impl created(may caused by api error)", id);
+                holder.set(null);
+                return;
+            }
+
+            try {
+                instance.checkCompatibility();
+            } catch (APIIncompatibleException e) {
+                logger.warn("service {} failed compat check: {}", id, e.getCause().toString());
+                holder.set(null);
+                return;
+            }
+
+            holder.set(instance);
+
+            if (inject.isAnnotationPresent(Export.class)) {
+                this.exportService(holder.get(), service);
+            }
+
+            holder.get().enable();
+        } catch (Throwable e) {
+            logger.error("failed to set implementation for service [{}]:", id);
+            this.handleException(e);
+        }
+    }
+
+    public <E extends I> void registerService(Class<E> service) {
+        var id = Service.getServiceId(service);
+
+        if (this.services.containsKey(id)) {
+            throw new RuntimeException("exist registered service: %s".formatted(id));
+        }
+        this.services.put(id, service);
+
+        var inject = getInjection(service);
+
+        if (inject == null && hasImplementation(service)) {
+            getLogger().warn("{}: implementation declared while no injection point found!", service);
+        }
+
+        if (inject != null) {
+            inject(service, id, inject);
+        }
+
+        try {
+            Method m = service.getMethod("start");
+
+            if (m.getAnnotation(ServiceInject.class) == null) {
+                return;
+            }
+
+            try {
+                m.invoke(null);
+            } catch (Throwable e) {
+                this.handleException(e);
+            }
+
+        } catch (NoSuchMethodException ignored) {
+        }
+    }
+
+    public void unregisterService(Class<? extends I> service) {
+        var id = Service.getServiceId(service);
+        this.services.remove(id);
+
+        try {
+            Method m = service.getMethod("stop");
+
+            if (m.getAnnotation(ServiceInject.class) != null) {
+                m.invoke(null);
+            }
+        } catch (NoSuchMethodException ignored) {
+        } catch (InvocationTargetException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+
+        var inject = getInjection(service);
+
+        if (inject == null) {
+            return;
+        }
+
+        try {
+            var handle = service.cast(((ServiceHolder<?>) inject.get(null)).get());
+
+            if (handle == null) {
+                return;
+            }
+
+            if (inject.isAnnotationPresent(Export.class)) {
+                this.unregisterExportedService(service);
+            }
+
+            handle.disable();
+        } catch (Throwable e) {
+            this.logger.error("failed to stop implementation for [{}]", id);
+            this.handleException(e);
+        }
+    }
+
+    public <E extends I> Class<E> getService(String id, Class<Class<E>> type) {
+        return type.cast(this.services.get(id));
+    }
+
+    public void unregisterAllServices(ServiceLayer layer) {
+        for (var serviceClass : new HashSet<>(this.services.values())) {
+            if (Service.getServiceLayer(serviceClass) != layer) {
+                continue;
+            }
+            this.unregisterService(serviceClass);
+        }
+    }
+
+    public abstract Logger getLogger();
+
+    public abstract <E extends I> E createImplementation(Class<E> service, String id);
+
+    public abstract <E extends I> void exportService(E object, Class<E> type);
+
+    public abstract void handleException(Throwable e);
+
+    public abstract void unregisterExportedService(Class<? extends I> type);
 }

@@ -2,15 +2,16 @@ package me.gb2022.modular.pack;
 
 import me.gb2022.modular.FeatureAvailability;
 import me.gb2022.modular.module.IModule;
-import me.gb2022.modular.module.ModuleManager;
-import me.gb2022.modular.module.meta.ModuleMeta;
+import me.gb2022.modular.module.ModuleHandle;
+import me.gb2022.modular.module.ModuleManagerV2;
 import me.gb2022.modular.registry.ContentRegistry;
 import me.gb2022.modular.registry.ModuleRegistry;
 import me.gb2022.modular.registry.ServiceRegistry;
-import me.gb2022.modular.service.Service;
 import me.gb2022.modular.service.ServiceManager;
+import me.gb2022.modular.service.Service;
 
-public abstract class AbstractPackage<M extends ModuleMeta, H extends IModule, S extends Service> implements IPackage<M, H, S> {
+
+public abstract class AbstractPackage<M extends IModule, H extends ModuleHandle, S extends Service> implements IPackage<M, H, S> {
     private final String id;
     private final ModuleRegistry<M, H> moduleRegistry;
     private final ServiceRegistry<S> serviceRegistry;
@@ -30,7 +31,7 @@ public abstract class AbstractPackage<M extends ModuleMeta, H extends IModule, S
         this.availability = availability;
     }
 
-    public abstract ModuleManager<M, H> getModuleManager();
+    public abstract ModuleManagerV2 getModuleManager();
 
     public abstract ServiceManager<S> getServiceManager();
 

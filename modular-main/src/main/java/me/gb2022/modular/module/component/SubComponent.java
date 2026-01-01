@@ -1,4 +1,4 @@
-package me.gb2022.modular.subcomponent;
+package me.gb2022.modular.module.component;
 
 import me.gb2022.modular.FunctionalComponent;
 

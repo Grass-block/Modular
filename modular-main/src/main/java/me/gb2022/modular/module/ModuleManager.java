@@ -2,18 +2,25 @@ package me.gb2022.modular.module;
 
 import me.gb2022.commons.TriState;
 import me.gb2022.modular.FunctionalComponentStatus;
+import me.gb2022.modular.ModularApplicationContext;
 import me.gb2022.modular.ObjectOperationResult;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.*;
 
-public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleHandle> {
-    protected final Logger logger;
-    protected final Map<String, H> modules = new HashMap<>();
+public class ModuleManager {
+    protected final Logger logger = createLogger();
+    protected final Map<String, ModuleContainer> modules = new HashMap<>();
     protected final Properties statusMap = new Properties();
+    private final ModularApplicationContext context;
 
-    public ModuleManagerV2(Logger logger) {
-        this.logger = logger;
+    public ModuleManager(ModularApplicationContext context) {
+        this.context = context;
+    }
+
+    public Logger createLogger() {
+        return LogManager.getLogger("ModuleManager");
     }
 
     public void enable() {
@@ -26,7 +33,15 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
         }
     }
 
-    public void register(H handle) {
+    public ModularApplicationContext getContext() {
+        return context;
+    }
+
+    public Logger getLogger() {
+        return LogManager.getLogger("PackageManager");
+    }
+
+    public void register(ModuleContainer handle) {
         this.modules.put(handle.getMetadata().key().fullId(), handle);
         handle.register(this);
 
@@ -34,6 +49,7 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
             return;
         }
 
+        handle.initContext(this.context);
         handle.construct();
 
         if (handle.getStatus() == FunctionalComponentStatus.CONSTRUCT_FAILED) {
@@ -58,7 +74,9 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
 
         this.saveStatus();
         if (getStatus(id) == TriState.TRUE && !meta.beta()) {
+            this.handlePreEnable(handle);
             handle.init(this);
+            this.handlePostEnable(handle, ObjectOperationResult.SUCCESS);
         }
     }
 
@@ -88,30 +106,26 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
         this.modules.remove(id);
     }
 
-    private void saveStatus() {
-        this.saveStatus(this.statusMap);
-    }
-
-    public Properties getStatusMap() {
+    public final Properties getStatusMap() {
         return statusMap;
     }
 
-    public Map<String, H> getModules() {
+    public final Map<String, ModuleContainer> getModules() {
         return modules;
     }
 
-    public Optional<H> get(String id) {
+    public final Optional<ModuleContainer> get(String id) {
         return Optional.ofNullable(this.modules.get(id));
     }
 
-    public TriState getStatus(String id) {
+    public final TriState getStatus(String id) {
         if (!this.statusMap.containsKey(id)) {
             return TriState.UNKNOWN;
         }
         return Objects.equals(this.statusMap.get(id), "enabled") ? TriState.TRUE : TriState.FALSE;
     }
 
-    public Set<String> getIdsByStatus(TriState status) {
+    public final Set<String> getIdsByStatus(TriState status) {
         var result = new HashSet<String>();
         for (var id : this.modules.keySet()) {
             if (getStatus(id) != status) {
@@ -160,7 +174,7 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
         return enable(id);
     }
 
-    private ObjectOperationResult checkState0(H handle, FunctionalComponentStatus state) {
+    private ObjectOperationResult checkState0(ModuleContainer handle, FunctionalComponentStatus state) {
         if (handle == null || handle.getStatus() == FunctionalComponentStatus.UNKNOWN) {
             return ObjectOperationResult.NOT_FOUND;
         }
@@ -173,24 +187,24 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
     }
 
     private ObjectOperationResult enable0(String id) {
-        var meta = this.get(id).orElse(null);
-        var result = checkState0(meta, FunctionalComponentStatus.ENABLED);
+        var handle = this.get(id).orElse(null);
+        var result = checkState0(handle, FunctionalComponentStatus.ENABLED);
 
         if (result != ObjectOperationResult.INTERNAL_ERROR) {
             return result;
         }
 
-        this.handlePreEnable(meta);
+        this.handlePreEnable(handle);
 
         try {
-            assert meta != null;
-            meta.enable();
+            assert handle != null;
+            handle.enable();
             result = ObjectOperationResult.SUCCESS;
         } catch (Exception ex) {
             this.handleException(ex);
         }
 
-        this.handlePostEnable(meta, result);
+        this.handlePostEnable(handle, result);
 
         if (result == ObjectOperationResult.SUCCESS) {
             this.statusMap.put(id, "enabled");
@@ -226,8 +240,12 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
         return result;
     }
 
+    private void saveStatus() {
+        this.saveStatus(this.statusMap);
+    }
 
-    public boolean validRegister(H handle) {
+
+    public boolean validRegister(ModuleContainer handle) {
         return true;
     }
 
@@ -235,20 +253,26 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
         return true;
     }
 
-    public abstract void saveStatus(Properties meta);
-
-    public abstract void handleException(Throwable ex);
-
-    public void handlePreEnable(H handle) {
+    public void saveStatus(Properties meta) {
     }
 
-    public void handlePostEnable(H handle, ObjectOperationResult result) {
+    public void handleException(Throwable ex) {
+        this.logger.catching(ex);
     }
 
-    public void handlePreDisable(H handle) {
+    public void handlePreEnable(ModuleContainer handle) {
     }
 
-    public void handlePostDisable(H handle, ObjectOperationResult result) {
+    public void handlePostEnable(ModuleContainer handle, ObjectOperationResult result) {
+    }
+
+    public void handlePreDisable(ModuleContainer handle) {
+    }
+
+    public void handlePostDisable(ModuleContainer handle, ObjectOperationResult result) {
+    }
+
+    public void initializeModuleContainer(ModuleContainer handle) {
     }
 
 
@@ -265,14 +289,14 @@ public abstract class ModuleManagerV2<M extends IModule<?, H>, H extends ModuleH
     }
 
     public final void reloadAll() {
-        List<String> list = new ArrayList<>();
+        var list = new ArrayList<String>();
         for (String id : this.getModules().keySet()) {
             if (this.disable(id) != ObjectOperationResult.SUCCESS) {
                 continue;
             }
             list.add(id);
         }
-        for (String s : list) {
+        for (var s : list) {
             this.enable(s);
         }
     }

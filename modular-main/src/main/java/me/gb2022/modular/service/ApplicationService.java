@@ -1,5 +1,7 @@
 package me.gb2022.modular.service;
 
+import me.gb2022.modular.service.ServiceLayer;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -15,4 +17,6 @@ public @interface ApplicationService {
     String[] requiredBy() default {};
 
     ServiceLayer layer() default ServiceLayer.USER;
+
+    boolean export() default false;
 }

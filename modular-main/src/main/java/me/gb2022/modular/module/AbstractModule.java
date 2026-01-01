@@ -1,31 +1,33 @@
 package me.gb2022.modular.module;
 
-import me.gb2022.modular.pack.IPackage;
+import me.gb2022.modular.pack.ApplicationPackage;
 
 import java.util.Objects;
 
 @SuppressWarnings("rawtypes")
-public abstract class AbstractModule<H extends ModuleHandle,P extends IPackage<?,H,?>> implements IModule<P,H> {
-    private H handle;
+public abstract class AbstractModule implements AppModule {
+    private ApplicationPackage parent;
+    private ModuleContainer handle;
 
     @Override
-    public P parent() {
-        return (P) this.handle.getParent();
+    public final ApplicationPackage parent() {
+        return this.parent;
     }
 
     @Override
-    public H handle() {
+    public final ModuleContainer handle() {
         return this.handle;
     }
 
     @Override
-    public void init(String id, P parent, H handle) {
+    public void init(String id, ApplicationPackage parent, ModuleContainer handle) {
+        this.parent = parent;
         this.handle = handle;
     }
 
     @Override
     public final String toString() {
-        return "%s{%s}".formatted(getClass().getSimpleName(), descriptor());
+        return "%s{%s}".formatted(getClass().getSimpleName(), handle().getMetadata());
     }
 
     @Override
@@ -35,7 +37,7 @@ public abstract class AbstractModule<H extends ModuleHandle,P extends IPackage<?
 
     @Override
     public final boolean equals(Object obj) {
-        if (!(obj instanceof IModule m)) {
+        if (!(obj instanceof AppModule m)) {
             return false;
         }
         return Objects.equals(m.getFullId(), this.getFullId());

@@ -1,190 +1,164 @@
 package me.gb2022.modular.service;
 
 import me.gb2022.modular.APIIncompatibleException;
-import me.gb2022.modular.service.injection.Export;
-import me.gb2022.modular.service.injection.ServiceInject;
-import me.gb2022.modular.service.injection.ServiceProvider;
+import me.gb2022.modular.Debug;
+import me.gb2022.modular.ModularApplicationContext;
+import me.gb2022.modular.service.ApplicationService;
+import me.gb2022.modular.service.Service;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
-public abstract class ServiceManager<I extends Service> {
-    private final Logger logger = getLogger();
-    private final HashMap<String, Class<? extends I>> services = new HashMap<>(24);
+public class ServiceManager {
+    private final ModularApplicationContext context;
+    private final Map<String, ServiceContainer> services = new ConcurrentHashMap<>(24);
+    Logger LOGGER = LogManager.getLogger("ServiceManager");
 
-    static boolean hasImplementation(Class<? extends Service> clazz) {
-        for (var m : clazz.getDeclaredMethods()) {
-            if (m.getAnnotation(ServiceProvider.class) != null) {
-                return true;
+    public ServiceManager(ModularApplicationContext context) {
+        this.context = context;
+    }
+
+    public final Optional<ServiceContainer> getService(String fullId) {
+        return Optional.ofNullable(this.services.get(fullId));
+    }
+
+    public final void addService(ServiceContainer container) {
+        container.initContext(this.context);
+
+        try {
+            container.checkCompatibility();
+        } catch (APIIncompatibleException e) {
+            throw new RuntimeException(e);
+        }
+
+        try {
+            container.initialize();
+            container.enable();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        this.services.put(container.meta().fullId(), container);
+    }
+
+    public final void removeService(ServiceContainer container) {
+        var o = this.getService(container.meta().fullId());
+
+        if (o.isEmpty()) {
+            return;
+        }
+
+        var cc = o.get();
+
+        if (cc != container) {
+            throw new ConcurrentModificationException("ServiceContainer object mismatch!");
+        }
+
+        try {
+            cc.disable();
+        } catch (Exception e) {
+            LOGGER.warn("Failed to stop service {}, THIS MAY CAUSE BUG!!!", container.meta().fullId());
+            LOGGER.catching(e);
+        } finally {
+            this.services.remove(container.meta().fullId());
+        }
+    }
+
+    public final void removeAll(ServiceLayer layer) {
+        for (var container : new HashSet<>(this.services.values())) {
+            if (Service.getServiceLayer(container.getHandle()) != layer) {
+                continue;
+            }
+            this.removeService(container);
+        }
+    }
+
+    public Service createImplementation(ServiceContainer serviceContainer, Class<Service> clazz) {
+        Debug.log().info("creating impl of {}", clazz);
+        return createImplementation(clazz);
+    }
+
+    public final Service createImplementation(Class<? extends Service> clazz, Object... args) {
+        var paramClasses = Arrays.stream(args).map(Object::getClass).toArray(Class[]::new);
+
+        for (Method m : clazz.getDeclaredMethods()) {
+            if (m.getAnnotation(ServiceProvider.class) == null) {
+                continue;
+            }
+
+            Debug.log().info("Found service provider: {}", m.getName());
+
+            try {
+                if (m.getParameterTypes().length == 0) {
+                    Debug.log().info("Using empty create: {}", m.getName());
+                    return (Service) m.invoke(null);
+                }
+
+                Debug.log().info("Using user create with {}: {}", Arrays.toString(args), m.getName());
+                return (Service) m.invoke(null, args);
+            } catch (NoClassDefFoundError ignored) {
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                if (e.getCause() instanceof APIIncompatibleException) {
+                    return null;
+                }
+                if (e.getCause() instanceof NoClassDefFoundError) {
+                    return null;
+                }
+
+                throw new RuntimeException(e);
             }
         }
 
         var implClass = clazz.getAnnotation(ApplicationService.class).impl();
 
-        return implClass != Service.class;
-    }
-
-    static boolean isLazy(Class<? extends Service> clazz) {
-        return clazz.getAnnotation(ApplicationService.class).requiredBy().length != 0;
-    }
-
-
-    private Field getInjection(Class<? extends Service> service) {
-        if (!hasImplementation(service)) {
+        if (implClass == Service.class) {
+            Debug.log().info("No service provider or registered impl: {}", clazz.getName());
             return null;
         }
 
-        Field injection = null;
-
-        for (var f : service.getDeclaredFields()) {
-            if (f.getAnnotation(ServiceInject.class) == null) {
-                continue;
-            }
-
-            if (injection == null) {
-                injection = f;
-            } else {
-                throw new IllegalArgumentException("find multiple injection point in %s, this will cause BUGS!".formatted(service));
-            }
-        }
-
-        if (injection != null) {
-            injection.setAccessible(true);
-        }
-
-        return injection;
-    }
-
-    private <E extends I> void inject(Class<E> service, String id, Field inject) {
         try {
-            var holder = ((ServiceHolder<E>) inject.get(null));
-            var instance = createImplementation(service, id);
+            Debug.log().info("Using user arg constructor {}: {}", Arrays.toString(args), clazz.getName());
 
-            if (instance == null) {
-                logger.warn("service {} has null impl created(may caused by api error)", id);
-                holder.set(null);
-                return;
-            }
-
+            return implClass.getDeclaredConstructor(paramClasses).newInstance(args);
+        } catch (NoSuchMethodException e) {
             try {
-                instance.checkCompatibility();
-            } catch (APIIncompatibleException e) {
-                logger.warn("service {} failed compat check: {}", id, e.getCause().toString());
-                holder.set(null);
-                return;
+                Debug.log().info("Using empty constructor {}: {}", Arrays.toString(args), clazz.getName());
+                return implClass.getDeclaredConstructor().newInstance();
+            } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException ex) {
+                if (e.getCause() instanceof APIIncompatibleException) {
+                    return null;
+                }
+                if (e.getCause() instanceof NoClassDefFoundError) {
+                    return null;
+                }
+                throw new RuntimeException(ex);
             }
-
-            holder.set(instance);
-
-            if (inject.isAnnotationPresent(Export.class)) {
-                this.exportService(holder.get(), service);
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException ex) {
+            if (ex.getCause() instanceof APIIncompatibleException) {
+                return null;
             }
-
-            holder.get().enable();
-        } catch (Throwable e) {
-            logger.error("failed to set implementation for service [{}]:", id);
-            this.handleException(e);
+            if (ex.getCause() instanceof NoClassDefFoundError) {
+                return null;
+            }
+            throw new RuntimeException(ex);
         }
     }
 
-    public <E extends I> void registerService(Class<E> service) {
-        var id = Service.getServiceId(service);
-
-        if (this.services.containsKey(id)) {
-            throw new RuntimeException("exist registered service: %s".formatted(id));
-        }
-        this.services.put(id, service);
-
-        var inject = getInjection(service);
-
-        if (inject == null && hasImplementation(service)) {
-            getLogger().warn("{}: implementation declared while no injection point found!", service);
-        }
-
-        if (inject != null) {
-            inject(service, id, inject);
-        }
-
-        try {
-            Method m = service.getMethod("start");
-
-            if (m.getAnnotation(ServiceInject.class) == null) {
-                return;
-            }
-
-            try {
-                m.invoke(null);
-            } catch (Throwable e) {
-                this.handleException(e);
-            }
-
-        } catch (NoSuchMethodException ignored) {
-        }
+    public <E extends Service> void exportService(E object, Class<E> type) {
     }
 
-    public void unregisterService(Class<? extends I> service) {
-        var id = Service.getServiceId(service);
-        this.services.remove(id);
-
-        try {
-            Method m = service.getMethod("stop");
-
-            if (m.getAnnotation(ServiceInject.class) != null) {
-                m.invoke(null);
-            }
-        } catch (NoSuchMethodException ignored) {
-        } catch (InvocationTargetException | IllegalAccessException e) {
-            throw new RuntimeException(e);
-        }
-
-        var inject = getInjection(service);
-
-        if (inject == null) {
-            return;
-        }
-
-        try {
-            var handle = service.cast(((ServiceHolder<?>) inject.get(null)).get());
-
-            if (handle == null) {
-                return;
-            }
-
-            if (inject.isAnnotationPresent(Export.class)) {
-                this.unregisterExportedService(service);
-            }
-
-            handle.disable();
-        } catch (Throwable e) {
-            this.logger.error("failed to stop implementation for [{}]", id);
-            this.handleException(e);
-        }
+    public void unregisterExportedService(Class<? extends Service> type) {
     }
 
-    public <E extends I> Class<E> getService(String id, Class<Class<E>> type) {
-        return type.cast(this.services.get(id));
+    protected final ModularApplicationContext context() {
+        return this.context;
     }
 
-    public void unregisterAllServices(ServiceLayer layer) {
-        for (var serviceClass : new HashSet<>(this.services.values())) {
-            if (Service.getServiceLayer(serviceClass) != layer) {
-                continue;
-            }
-            this.unregisterService(serviceClass);
-        }
+    public Map<String, ServiceContainer> all() {
+        return this.services;
     }
-
-    public abstract Logger getLogger();
-
-    public abstract <E extends I> E createImplementation(Class<E> service, String id);
-
-    public abstract <E extends I> void exportService(E object, Class<E> type);
-
-    public abstract void handleException(Throwable e);
-
-    public abstract void unregisterExportedService(Class<? extends I> type);
 }

@@ -1,4 +1,4 @@
-package me.gb2022.modular.subcomponent;
+package me.gb2022.modular.module.component;
 
 import java.util.Map;
 import java.util.function.Consumer;

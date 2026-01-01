@@ -1,17 +1,16 @@
-package me.gb2022.modular;
+package me.gb2022.modular.module;
 
-import me.gb2022.modular.module.ApplicationModule;
-import me.gb2022.modular.module.IModule;
+import me.gb2022.modular.NamespaceKey;
 
-public final class ComponentMetadata implements Comparable<ComponentMetadata> {
+public final class ModuleMetadata implements Comparable<ModuleMetadata> {
     private final NamespaceKey key;
     private final String version;
-    private final String description;
     private final boolean internal;
     private final boolean defaultEnabled;
     private final boolean beta;
+    private String description;
 
-    public ComponentMetadata(String namespace, String id, String version, String description, boolean internal, boolean defaultEnabled, boolean beta) {
+    public ModuleMetadata(String namespace, String id, String version, String description, boolean internal, boolean defaultEnabled, boolean beta) {
         this.key = new NamespaceKey(namespace, id);
         this.internal = internal;
         this.version = version;
@@ -20,9 +19,9 @@ public final class ComponentMetadata implements Comparable<ComponentMetadata> {
         this.beta = beta;
     }
 
-    public static ComponentMetadata fromModule(String namespace, Class<? extends IModule> ref) {
+    public static ModuleMetadata parse(String namespace, Class<?> ref) {
         var annotation = ref.getAnnotation(ApplicationModule.class);
-        return new ComponentMetadata(
+        return new ModuleMetadata(
                 namespace,
                 annotation.id(),
                 annotation.version(),
@@ -62,7 +61,11 @@ public final class ComponentMetadata implements Comparable<ComponentMetadata> {
     }
 
     @Override
-    public int compareTo(ComponentMetadata o) {
+    public int compareTo(ModuleMetadata o) {
         return toString().compareTo(o.toString());
+    }
+
+    public void appendDescription(String s) {
+        this.description += ("\n" + s);
     }
 }

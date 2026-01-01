@@ -36,12 +36,12 @@ project.ext.gbuildLib = { lib ->
         local.getParentFile().mkdirs()
         local.createNewFile()
         Files.copy(remote.toPath(), local.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        print("Downloaded lib ${lib} (${remote.lastModified()} > ${local.lastModified()})")
+        println("Downloaded lib ${lib} (${remote.lastModified()} > ${local.lastModified()})")
         return files(local_path)
     }
 
     if (remote.lastModified() > local.lastModified() || remote.length() != local.length()) {
-        print("Updating lib ${lib} (${remote.lastModified()} > ${local.lastModified()})")
+        println("Updating lib ${lib} (${remote.lastModified()} > ${local.lastModified()})")
         Files.copy(remote.toPath(), local.toPath(), StandardCopyOption.REPLACE_EXISTING)
     }
 
